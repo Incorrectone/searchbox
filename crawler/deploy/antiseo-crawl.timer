@@ -1,0 +1,10 @@
+[Unit]
+Description=Run the AntiSEO crawl every Sunday at 03:00 IST
+
+[Timer]
+OnCalendar=Sun *-*-* 03:00:00 Asia/Kolkata
+Persistent=true
+RandomizedDelaySec=15min
+
+[Install]
+WantedBy=timers.target

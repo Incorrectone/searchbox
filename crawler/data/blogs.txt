@@ -1,0 +1,5 @@
+# Blogs you want indexed for sure: a host or a feed URL per line.
+# Load with:  deploy/run.sh seed --file /data/blogs.txt
+# danluu.com
+# jvns.ca
+# https://simonwillison.net/atom/everything/

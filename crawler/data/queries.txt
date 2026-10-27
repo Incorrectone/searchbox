@@ -1,0 +1,9 @@
+# Your 10 test queries: things you'd genuinely search for.
+# These are the Phase 1 exit test and the benchmark for tuning quality.py.
+# Run:  deploy/run.sh search --bench /data/queries.txt
+# Replace the examples below with your own.
+memory leak debugging in rust
+how to self-host email
+why I left kubernetes
+sqlite in production
+writing a compiler from scratch

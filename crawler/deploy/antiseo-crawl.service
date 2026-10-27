@@ -1,0 +1,14 @@
+[Unit]
+Description=AntiSEO weekly feed crawl
+Wants=network-online.target
+After=network-online.target docker.service tailscaled.service
+
+[Service]
+Type=oneshot
+# Change these if your user or clone path differs.
+User=incor
+SupplementaryGroups=docker
+WorkingDirectory=/home/incor/searchbox/crawler
+ExecStart=/home/incor/searchbox/crawler/deploy/run.sh crawl
+TimeoutStartSec=4h
+Nice=10

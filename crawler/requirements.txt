@@ -1,0 +1,11 @@
+# Pinned to the versions tested. Don't bump onnxruntime/onnx casually:
+# prepare-model's int8 output (and therefore its hash) depends on them.
+onnxruntime==1.29.0
+onnx==1.23.2
+tokenizers==0.23.3
+numpy==2.5.3
+feedparser==6.0.14
+trafilatura==2.3.1
+lxml==6.1.3
+httpx==0.28.1
+psycopg[binary]==3.3.6
