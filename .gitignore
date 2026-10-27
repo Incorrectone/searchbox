@@ -3,3 +3,6 @@
 *.tfstate.*
 *.tfvars
 crash.log
+infra/azure/keys/
+secret*
+*.tfplan
