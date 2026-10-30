@@ -13,12 +13,12 @@ from dataclasses import dataclass, field
 
 import httpx
 
-from . import db, feeds, quality
+from . import db, feeds, images, quality
 from .config import CFG
 from .embedder import Embedder
 from .extract import extract, looks_english, word_count
 from .models import Candidate
-from .net import BackOff, BlockedURL, HostSession, make_client, same_site
+from .net import BackOff, BlockedURL, HostSession, get, make_client, same_site
 
 
 @dataclass
@@ -94,19 +94,27 @@ def process_domain(client: httpx.Client, d: db.Domain, known: set[str], max_post
             if not looks_english(ex.text):
                 _skip(r, "not English")
                 continue
-            r.candidates.append(
-                Candidate(
-                    domain_id=d.id,
-                    host=d.host,
-                    url=e.url,
-                    title=(e.title or ex.title or e.url)[:500],
-                    text=ex.text,
-                    published_at=e.published or ex.date,
-                    html=html or "",
-                    html_is_full_page=full_page,
-                    feed_max_posts_per_day=burst,
-                )
+            cand = Candidate(
+                domain_id=d.id,
+                host=d.host,
+                url=e.url,
+                title=(e.title or ex.title or e.url)[:500],
+                text=ex.text,
+                published_at=e.published or ex.date,
+                html=html or "",
+                html_is_full_page=full_page,
+                feed_max_posts_per_day=burst,
             )
+            if images.images_enabled():
+                picked = images.pick(cand.html, e.url)
+                if picked:
+                    img_url, alt = picked
+
+                    def fetch(u, _hs=hs, _host=d.host):
+                        return _hs.fetch(u) if same_site(u, _host) else get(client, u)
+
+                    cand.thumbnail = images.fetch_thumbnail(fetch, img_url, alt or cand.title)
+            r.candidates.append(cand)
     except BackOff as ex:
         r.status = f"backed off ({ex})"
     except BlockedURL as ex:
@@ -143,15 +151,28 @@ def run(argv: list[str] | None = None) -> int:
         print(f"crawling {len(domains)} domains (model {emb.sha256[:12]})", flush=True)
 
         kept_total, dropped_total, pending = 0, 0, []
+        img_uploaded, img_budget = 0, CFG.max_images_per_run
+        upload_client = make_client() if images.images_enabled() else None
 
         def flush():
-            nonlocal kept_total
+            nonlocal kept_total, img_uploaded
             if not pending:
                 return
             texts = [f"{c.title}\n{' '.join(c.text.split()[:CFG.embed_words])}" for c in pending]
             vecs = emb.embed(texts)
             if not args.dry_run:
                 db.upsert(conn, pending, vecs)
+                with_images = []
+                for c in pending:
+                    if c.thumbnail is not None and img_uploaded < img_budget and upload_client:
+                        try:
+                            ok = images.upload(upload_client, c.thumbnail)
+                        except Exception:
+                            ok = False
+                        if ok:
+                            img_uploaded += 1
+                            with_images.append(c)
+                db.upsert_images(conn, with_images)
                 conn.commit()
             kept_total += len(pending)
             pending.clear()
@@ -182,8 +203,11 @@ def run(argv: list[str] | None = None) -> int:
 
         version = db.finish_run(conn, kept_total) if not args.dry_run else None
         mins = (time.monotonic() - t0) / 60
+        if upload_client:
+            upload_client.close()
         print(
-            f"done in {mins:.1f} min: {kept_total} new docs, {dropped_total} dropped by quality gate"
+            f"done in {mins:.1f} min: {kept_total} new docs, {img_uploaded} thumbnails, "
+            f"{dropped_total} dropped by quality gate"
             + (f", index_version={version}" if version is not None else " (dry run)"),
             flush=True,
         )

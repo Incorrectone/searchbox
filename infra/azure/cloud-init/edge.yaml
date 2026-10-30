@@ -1,0 +1,45 @@
+#cloud-config
+package_update: true
+package_upgrade: true
+packages:
+  - unattended-upgrades
+  - curl
+  - gnupg
+  - debian-keyring
+  - debian-archive-keyring
+  - apt-transport-https
+
+write_files:
+  # Staged here; moved into /etc/caddy after the caddy user exists.
+  - path: /root/edge-staging/origin.pem
+    permissions: "0600"
+    content: |
+      ${indent(6, origin_cert)}
+  - path: /root/edge-staging/origin.key
+    permissions: "0600"
+    content: |
+      ${indent(6, origin_key)}
+  - path: /root/edge-staging/Caddyfile
+    permissions: "0600"
+    content: |
+      ${indent(6, caddyfile)}
+  - path: /srv/fallback/index.html
+    permissions: "0644"
+    content: |
+      ${indent(6, fallback_html)}
+
+runcmd:
+  # 1 GB swap (the VM has 1 GiB RAM)
+  - [sh, -c, "fallocate -l 1G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile && echo '/swapfile none swap sw 0 0' >> /etc/fstab"]
+  # Caddy from its official apt repository
+  - [sh, -c, "curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg"]
+  - [sh, -c, "curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' > /etc/apt/sources.list.d/caddy-stable.list"]
+  - [sh, -c, "apt-get update && apt-get install -y caddy"]
+  - [sh, -c, "install -o root -g caddy -m 0640 /root/edge-staging/origin.pem /etc/caddy/origin.pem"]
+  - [sh, -c, "install -o root -g caddy -m 0640 /root/edge-staging/origin.key /etc/caddy/origin.key"]
+  - [sh, -c, "install -o root -g caddy -m 0640 /root/edge-staging/Caddyfile /etc/caddy/Caddyfile"]
+  - [sh, -c, "rm -rf /root/edge-staging && mkdir -p /var/log/caddy && chown caddy:caddy /var/log/caddy"]
+  - [sh, -c, "caddy validate --config /etc/caddy/Caddyfile && systemctl restart caddy"]
+  # Tailscale (admin access only; the edge talks to the app over the VNet)
+  - [sh, -c, "curl -fsSL https://tailscale.com/install.sh | sh"]
+  - tailscale up --authkey=${ts_authkey} --ssh --advertise-tags=tag:edge --hostname=antiseo-edge

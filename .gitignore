@@ -6,3 +6,5 @@ crash.log
 infra/azure/keys/
 secret*
 *.tfplan
+models/
+infra/azure/keys/antiseo

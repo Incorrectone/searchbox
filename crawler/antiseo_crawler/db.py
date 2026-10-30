@@ -111,6 +111,26 @@ def upsert(conn, cands: list[Candidate], vectors) -> int:
     return len(rows)
 
 
+_IMAGE_UPSERT = """
+INSERT INTO images (document_id, source_url, blob_path, width, height, alt)
+SELECT id, %s, %s, %s, %s, %s FROM documents WHERE url = %s
+ON CONFLICT (document_id) DO UPDATE SET
+  source_url = EXCLUDED.source_url, blob_path = EXCLUDED.blob_path,
+  width = EXCLUDED.width, height = EXCLUDED.height, alt = EXCLUDED.alt
+"""
+
+
+def upsert_images(conn, cands: list[Candidate]) -> None:
+    rows = [
+        (t.source_url, t.blob_path, t.width, t.height, t.alt, c.url)
+        for c in cands
+        if (t := c.thumbnail) is not None
+    ]
+    if rows:
+        with conn.cursor() as cur:
+            cur.executemany(_IMAGE_UPSERT, rows)
+
+
 def finish_run(conn, inserted: int) -> int:
     """Bump index_version (invalidates cached searches) and record stats."""
     version = int(get_meta(conn, "index_version") or 0)

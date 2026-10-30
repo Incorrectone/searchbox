@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="SearchBox.Api.Tests/SearchBox.Api.Tests.csproj" />
+  <Project Path="SearchBox.Api/SearchBox.Api.csproj" />
+</Solution>

@@ -8,14 +8,15 @@ It only makes outbound connections. Nothing connects to the Pi.
 | Path | Purpose |
 |---|---|
 | `antiseo_crawler/crawl.py` | the pipeline |
-| `antiseo_crawler/quality.py` | **the anti-SEO quality gate: yours to write** (keeps everything until then) |
+| `antiseo_crawler/quality.py` | the anti-SEO quality gate (ads/affiliate links, SEO titles, LLM boilerplate, posting bursts); tests in `tests/` |
 | `antiseo_crawler/net.py` | HTTP client, robots.txt, per-site delay, **home-network guard** |
 | `antiseo_crawler/feeds.py`, `extract.py` | feed discovery + conditional GET, trafilatura text extraction |
 | `antiseo_crawler/embedder.py` | ONNX MiniLM embeddings (no PyTorch) |
 | `antiseo_crawler/db.py` | upserts, `index_version`, model-hash guard |
 | `antiseo_crawler/search.py` | CLI hybrid search (same RRF query the API will use) |
 | `antiseo_crawler/seed.py` | add domains (Kagi Small Web sample or your list) |
-| `antiseo_crawler/prepare_model.py` | one-time model download + int8 quantization |
+| `antiseo_crawler/images.py` | one thumbnail per post: pick, sanitize (re-encode to WebP), upload to Azure Blob |
+| `antiseo_crawler/prepare_model.py` | one-time model download + int8 quantization (done in the Codespace, see below) |
 | `deploy/run.sh` | runs any command in the locked-down container |
 | `deploy/antiseo-crawl.{service,timer}` | Sunday 03:00 IST schedule |
 | `data/queries.txt` | your 10 test queries (Phase 1 exit test) |
@@ -46,6 +47,7 @@ EOF
 chmod 600 ~/.antiseo/crawler.env
 ```
 Optional: add `HC_URL=https://hc-ping.com/<your-check-uuid>` for Healthchecks.io.
+Phase 2: add `BLOB_BASE_URL` and `BLOB_SAS` (from `terraform output`) to turn on thumbnails; without them, images are skipped.
 No quotes in this file; Docker's env-file format takes values literally.
 
 **3. Build the image** (5–15 min on a Pi)
@@ -53,13 +55,14 @@ No quotes in this file; Docker's env-file format takes values literally.
 docker build -t antiseo-crawler crawler/
 ```
 
-**4. Prepare the model** (downloads ~90 MB, writes ~23 MB int8 model)
+**4. Get the model** (the same file the API uses; it is made once in the Codespace, see `api/README.md` step 2)
 ```bash
-crawler/deploy/run.sh prepare-model
+mkdir -p ~/.antiseo/models/minilm && cd ~/.antiseo/models/minilm
+gh release download model-v1 --repo Incorrectone/searchbox --clobber
+sha256sum model.onnx     # must match the release notes
+cd ~/searchbox
 ```
-Check the sanity line: `similar` must be clearly higher than `unrelated`.
-**Save the printed sha256**: the API on the app VM must use this exact `model.onnx`
-(in `~/.antiseo/models/minilm/`). Never re-run with `--force` once you have data.
+(Fallback: `crawler/deploy/run.sh prepare-model` builds it on the Pi, but then you must copy that exact file to the API.)
 
 **5. Add blogs**
 ```bash
@@ -96,12 +99,17 @@ journalctl -u antiseo-crawl -n 50                # logs of the last run
 |---|---|
 | `connection timeout` to Postgres inside the container, but `psql` on the Pi works | Docker's bridge network isn't reaching the Tailscale route. Add `--network host \` to the `docker run` in `deploy/run.sh` (the container then shares the Pi's network; the home-network guard still applies to everything it fetches). |
 | Every blog says `blocked (... resolves to non-public ...)` | DNS inside the container is returning private addresses (e.g. a Pi-hole). Check `docker run --rm antiseo-crawler ...` can resolve public names. Never "fix" this with `ALLOW_PRIVATE_ADDRESSES=1`. |
+| `N thumbnails` is always 0 | `BLOB_BASE_URL`/`BLOB_SAS` missing or expired, or `db/002_images.sql` not applied. |
 | `Model mismatch` | The DB was built with a different model.onnx. Use the original file, or empty `documents` and delete the `embedding_model` row in `meta` to rebuild. |
 | `missing .../crawler.env` | Step 2. |
 | A blog shows `backed off (403 ...)` | It's blocking or rate limiting bots. Expected for some; the crawler leaves it alone until next week. |
 
-## The quality gate (your part)
+## The quality gate
 
-`antiseo_crawler/quality.py` explains the input, the suggested signals and the
-tuning loop. Change the file, rebuild the image (`docker build ...`), crawl,
-run `search --bench`, repeat. Dropped posts print as `DROP <url> score=... reasons`.
+`antiseo_crawler/quality.py` scores each post (ads and affiliate links, listicle/SEO titles,
+LLM boilerplate phrases, posting bursts, a small bonus for author markup) and drops it when
+the score falls below `THRESHOLD`. One weak signal alone never drops a post.
+Dropped posts print as `DROP <url> score=... reasons`. Tests: `python tests/test_quality.py`.
+
+To tune: crawl, run `search --bench /data/queries.txt`, look at what got in, adjust the lists
+or `THRESHOLD`, rebuild the image, repeat.

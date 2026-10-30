@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SearchBox: the independent web, searched</title>
+<meta name="description" content="SearchBox searches personal and independent blogs only, with hybrid semantic + keyword ranking and an anti-SEO quality filter.">
+<link rel="stylesheet" href="/app.css">
+<script src="/app.js" defer></script>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="wrap topbar-row">
+    <nav class="tabs" aria-label="Search type">
+      <a href="/" data-tab="web" class="tab is-active">Web</a><span class="sep">|</span>
+      <a href="/?tab=images" data-tab="images" class="tab">Images</a><span class="sep">|</span>
+      <a href="#about" class="tab" id="about-link">About</a>
+    </nav>
+    <nav class="toplinks" aria-label="Project links">
+      <a href="/openapi/v1.json" target="_blank" rel="noopener">API</a>
+      <span id="dash-link-wrap" class="is-hidden"><span class="sep">|</span><a href="#" id="dash-link" target="_blank" rel="noopener">Security dashboard</a></span>
+    </nav>
+  </div>
+</header>
+
+<div class="labsbar">
+  <div class="wrap labsbar-row">
+    <span><b class="labs">SearchBox Labs Preview</b> <span class="sep">|</span> <span id="build">Index build –</span></span>
+    <span id="index-status" class="status-dot">Loading index status…</span>
+  </div>
+</div>
+
+<main>
+  <section class="hero" id="hero">
+    <div class="logo" aria-label="SearchBox">
+      <span class="logo-search">Search</span><span class="logo-box">Box</span><span class="badge-beta">Labs Beta</span>
+    </div>
+    <p class="tagline" id="tagline">Search the independent web: personal blogs only, no SEO farms.</p>
+    <form class="searchform" id="searchform" role="search">
+      <input id="q" name="q" type="search" autocomplete="off" spellcheck="false" maxlength="300"
+             placeholder="Try: memory leak debugging in rust" aria-label="Search query">
+      <div class="buttons">
+        <button type="submit" class="btn">SearchBox Search</button>
+        <button type="button" class="btn btn-ai" id="ai-btn">&#10022; Summarize with AI</button>
+      </div>
+      <div class="scopes" role="radiogroup" aria-label="Scope">
+        <label><input type="radio" name="tab" value="web" checked> the web</label>
+        <label><input type="radio" name="tab" value="images"> images</label>
+      </div>
+    </form>
+  </section>
+
+  <div class="resultsbar is-hidden" id="resultsbar">
+    <div class="wrap resultsbar-row">
+      <span id="result-count"></span>
+      <span class="muted" id="result-meta"></span>
+    </div>
+  </div>
+
+  <div class="wrap layout" id="layout">
+    <div class="col-main">
+      <section class="panel ai is-hidden" id="ai-panel" aria-live="polite">
+        <div class="panel-head ai-head">
+          <span><span class="bolt">&#9889;</span> <b>SearchBox Labs: AI Summary</b> <span class="beta">BETA</span></span>
+          <span class="panel-tools">
+            <a href="#how-ai" id="ai-why">How does this work?</a> &bull;
+            <button type="button" class="linkbtn" id="ai-hide">[X] Hide</button>
+          </span>
+        </div>
+        <div class="ai-sub" id="ai-sub"></div>
+        <div class="ai-body" id="ai-body"></div>
+        <div class="ai-sources" id="ai-sources"></div>
+      </section>
+
+      <div id="message" class="message is-hidden" role="status"></div>
+      <ol class="results" id="results"></ol>
+      <div class="imagegrid" id="imagegrid"></div>
+      <nav class="pager" id="pager" aria-label="Pages"></nav>
+    </div>
+
+    <aside class="col-side" id="side">
+      <section class="panel gadget">
+        <div class="panel-head"><b>&#128202; Index Status</b><span class="small muted">live</span></div>
+        <dl class="kv" id="stats-list">
+          <dt>Posts indexed</dt><dd id="st-docs">–</dd>
+          <dt>Independent blogs</dt><dd id="st-domains">–</dd>
+          <dt>Thumbnails</dt><dd id="st-images">–</dd>
+          <dt>Last crawl</dt><dd id="st-crawl">–</dd>
+          <dt>Index version</dt><dd id="st-version">–</dd>
+          <dt>Embedding model</dt><dd id="st-model" class="mono">–</dd>
+        </dl>
+      </section>
+
+      <section class="panel gadget" id="how-ranking">
+        <div class="panel-head"><b>&#128161; Why these results</b><span class="small muted">ranking</span></div>
+        <div class="gadget-body">
+          <p>Every query runs two searches at once:</p>
+          <p><span class="tag tag-s">S</span> <b>meaning</b>: the 100 posts whose embedding is closest to your query's (MiniLM, pgvector HNSW).</p>
+          <p><span class="tag tag-k">K</span> <b>keywords</b>: the 100 best full-text matches (PostgreSQL tsvector).</p>
+          <p>The two lists are merged with <b>Reciprocal Rank Fusion</b>: score = &sum; 1 / (60 + rank). Each result shows which list found it.</p>
+        </div>
+      </section>
+
+      <section class="panel gadget" id="how-ai">
+        <div class="panel-head"><b>&#10022; About the AI summary</b><span class="small muted">RAG</span></div>
+        <div class="gadget-body">
+          <p>Only runs when you click <b>Summarize</b>. The top 5 results are given to the model, which must answer only from them and cite them as [1]–[5].</p>
+          <p>Answers are shown as plain text; only the [n] markers become links, and only to the results themselves, so text inside a crawled page can't inject links.</p>
+          <p class="small muted" id="ai-models">Models: –</p>
+        </div>
+      </section>
+
+      <section class="panel gadget" id="about">
+        <div class="panel-head"><b>&#8505; About SearchBox</b><span class="small muted">notice</span></div>
+        <div class="gadget-body">
+          <p>A portfolio project: a small search engine for personal and independent blogs, with an anti-SEO quality filter.</p>
+          <p>A crawler at home reads blog feeds once a week. Search runs on Azure; every request is also logged and analysed as security telemetry.</p>
+          <p class="small muted">Retro 2007 styling on purpose. Rate limits apply.</p>
+        </div>
+      </section>
+    </aside>
+  </div>
+</main>
+
+<footer class="footer">
+  <form class="footer-search" id="footerform" role="search">
+    <input id="q2" type="search" maxlength="300" aria-label="Search again" autocomplete="off">
+    <button class="btn" type="submit">Search</button>
+  </form>
+  <p class="footer-links">
+    <a href="#about">About SearchBox</a> - <a href="/openapi/v1.json" target="_blank" rel="noopener">API (OpenAPI)</a> - <a href="#how-ranking">How ranking works</a> - <a href="#how-ai">AI summary</a>
+  </p>
+  <p class="small muted">SearchBox Labs: a portfolio project. Results link to the original blogs; thumbnails are small previews of their images.</p>
+</footer>
+
+</body>
+</html>

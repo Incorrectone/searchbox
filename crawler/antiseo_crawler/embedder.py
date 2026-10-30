@@ -46,6 +46,18 @@ class Embedder:
         self.input_names = {i.name for i in self.session.get_inputs()}
 
         self.tok = Tokenizer.from_file(str(tok_path))
+        # BERT models expect "[CLS] tokens [SEP]". The official tokenizer.json adds
+        # them via its post-processor; make sure of it, because the API's .NET
+        # tokenizer always adds them and both sides must produce identical tokens.
+        if self.tok.post_processor is None:
+            from tokenizers.processors import TemplateProcessing
+
+            cls_id, sep_id = self.tok.token_to_id("[CLS]"), self.tok.token_to_id("[SEP]")
+            self.tok.post_processor = TemplateProcessing(
+                single="[CLS] $A [SEP]",
+                pair="[CLS] $A [SEP] $B:1 [SEP]:1",
+                special_tokens=[("[CLS]", cls_id), ("[SEP]", sep_id)],
+            )
         self.tok.enable_truncation(max_length=MAX_TOKENS)
         self.tok.enable_padding(pad_id=0, pad_token="[PAD]")
 

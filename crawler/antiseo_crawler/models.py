@@ -19,3 +19,4 @@ class Candidate:
     feed_max_posts_per_day: int  # highest posts-on-one-day count in this feed
     quality_score: float | None = None
     quality_reasons: list[str] = field(default_factory=list)
+    thumbnail: object | None = None  # images.Thumbnail, prepared by the fetch thread

@@ -32,6 +32,12 @@ class Config:
     embed_words: int = _int("EMBED_WORDS", 200)   # title + first N words -> one vector
     batch_size: int = _int("UPSERT_BATCH", 200)
     hc_url: str = os.environ.get("HC_URL", "")    # Healthchecks.io ping URL (optional)
+    # Thumbnails: both must be set or images are skipped.
+    # BLOB_BASE_URL = https://<account>.blob.core.windows.net/thumbs
+    # BLOB_SAS      = the write-only SAS query string from `terraform output`
+    blob_base_url: str = os.environ.get("BLOB_BASE_URL", "")
+    blob_sas: str = os.environ.get("BLOB_SAS", "")
+    max_images_per_run: int = _int("MAX_IMAGES_PER_RUN", 2000)  # free tier: 10K writes/month
     # Only for local testing. Never set this on the Pi: it lets feeds point the
     # crawler at your home network.
     allow_private: bool = os.environ.get("ALLOW_PRIVATE_ADDRESSES") == "1"

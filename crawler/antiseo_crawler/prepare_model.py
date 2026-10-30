@@ -2,7 +2,8 @@
 
 Writes to MODEL_DIR (default /models/minilm):
   model.onnx       int8 model used by the crawler AND the API (copy this exact file)
-  tokenizer.json
+  tokenizer.json   (Python tokenizer, used by the crawler)
+  vocab.txt        (same vocabulary for the .NET API's BertTokenizer)
   source/          the downloaded fp32 original
 
 Run it once. Afterwards never regenerate model.onnx: a different file means a
@@ -19,7 +20,11 @@ from .config import CFG
 from .embedder import Embedder, file_sha256
 
 REPO = "https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main"
-FILES = {"onnx/model.onnx": "model_fp32.onnx", "tokenizer.json": "tokenizer.json"}
+FILES = {
+    "onnx/model.onnx": "model_fp32.onnx",
+    "tokenizer.json": "tokenizer.json",
+    "vocab.txt": "vocab.txt",  # the .NET API's BertTokenizer reads this
+}
 
 
 def download(url: str, dest: Path) -> None:
@@ -50,6 +55,7 @@ def run(argv: list[str] | None = None) -> int:
         elif not dest.exists():
             download(f"{REPO}/{remote}", dest)
     shutil.copy(src / "tokenizer.json", out / "tokenizer.json")
+    shutil.copy(src / "vocab.txt", out / "vocab.txt")
 
     from onnxruntime.quantization import QuantType, quantize_dynamic
 
@@ -65,5 +71,5 @@ def run(argv: list[str] | None = None) -> int:
     print(f"sanity check: similar={float(a @ b):.3f}  unrelated={float(a @ c):.3f}  (similar should be clearly higher)")
     size_mb = final.stat().st_size / 1e6
     print(f"\nmodel.onnx  {size_mb:.1f} MB\nsha256      {emb.sha256}")
-    print("Copy this exact model.onnx + tokenizer.json to the app VM later.")
+    print("Copy this exact model.onnx + vocab.txt to the app VM (see api/README.md).")
     return 0

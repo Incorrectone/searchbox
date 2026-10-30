@@ -1,0 +1,31 @@
+[Unit]
+Description=SearchBox API (ASP.NET Core)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=searchbox
+Group=searchbox
+WorkingDirectory=/opt/searchbox/current
+ExecStart=/opt/searchbox/current/SearchBox.Api
+EnvironmentFile=/etc/searchbox/api.env
+Environment=ASPNETCORE_ENVIRONMENT=Production DOTNET_gcServer=0 DOTNET_GCHeapHardLimit=0x1E000000
+Restart=always
+RestartSec=3
+
+# Hardening: the API only needs to read its files and talk to the network.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+CapabilityBoundingSet=
+MemoryMax=700M
+
+[Install]
+WantedBy=multi-user.target
