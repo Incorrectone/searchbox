@@ -1,11 +1,12 @@
 """Entry point:  python -m antiseo_crawler <command> [options]
 
-Commands: crawl, seed, search, prepare-model
+Commands: crawl, thumbs, seed, search, prepare-model
 """
 import sys
 
 COMMANDS = {
     "crawl": "antiseo_crawler.crawl",
+    "thumbs": "antiseo_crawler.thumbs",
     "seed": "antiseo_crawler.seed",
     "search": "antiseo_crawler.search",
     "prepare-model": "antiseo_crawler.prepare_model",
