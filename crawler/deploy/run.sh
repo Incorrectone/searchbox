@@ -6,6 +6,7 @@
 #   deploy/run.sh seed --file /data/blogs.txt
 #   deploy/run.sh crawl                   # the weekly job (also run by the timer)
 #   deploy/run.sh crawl --domain example.com --dry-run
+#   deploy/run.sh thumbs                  # thumbnails for already-indexed posts
 #   deploy/run.sh search "memory leak debugging in rust"
 #   deploy/run.sh search --bench /data/queries.txt
 #
@@ -21,7 +22,8 @@ IMAGE="${IMAGE:-antiseo-crawler}"
 
 [ -f "$ENV_FILE" ] || { echo "missing $ENV_FILE (see crawler/README.md)"; exit 1; }
 mkdir -p "$MODELS"
-PGHOST="$(sed -n 's/^PGHOST=//p' "$ENV_FILE")"
+PGHOST="$(sed -n 's/^\(export \)\{0,1\}PGHOST=//p' "$ENV_FILE" | tr -d '"'"'"'\r ')"
+[ -n "$PGHOST" ] || { echo "PGHOST is missing or empty in $ENV_FILE"; exit 1; }
 
 # The model folder is read-only, except for the one command that creates it.
 MODEL_MOUNT="$MODELS:/models:ro"
