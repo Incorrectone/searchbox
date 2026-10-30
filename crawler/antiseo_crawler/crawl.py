@@ -10,6 +10,7 @@ import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
+from html import unescape as html_unescape  # not `import html`: process_domain has a local named html
 
 import httpx
 
@@ -98,7 +99,9 @@ def process_domain(client: httpx.Client, d: db.Domain, known: set[str], max_post
                 domain_id=d.id,
                 host=d.host,
                 url=e.url,
-                title=(e.title or ex.title or e.url)[:500],
+                # Some feeds escape titles twice ("&amp;#124;"), so one decode by the feed
+                # parser still leaves "&#124;". Decode once more; the UI shows text, never HTML.
+                title=html_unescape(e.title or ex.title or e.url)[:500],
                 text=ex.text,
                 published_at=e.published or ex.date,
                 html=html or "",

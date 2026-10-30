@@ -44,7 +44,7 @@ chmod 0755 /opt/searchbox /opt/searchbox/releases /opt/searchbox/models /opt/sea
 install -m 0644 /tmp/sb-$REL/models/* /opt/searchbox/models/minilm/
 install -m 0644 /tmp/sb-$REL/searchbox-api.service /etc/systemd/system/searchbox-api.service
 rm -rf /tmp/sb-$REL
-PREV="\$(readlink -e /opt/searchbox/current 2>/dev/null || true)"
+PREV="\$(readlink -e /opt/searchbox/current 2>/dev/null || true)"   # -e: empty if there is no previous release
 ln -sfn /opt/searchbox/releases/$REL /opt/searchbox/current
 systemctl daemon-reload
 systemctl enable searchbox-api >/dev/null 2>&1
