@@ -11,6 +11,10 @@
 #   deploy/run.sh search --bench /data/queries.txt
 #
 # crawler/data/ is mounted read-only at /data inside the container.
+#
+# --network host: Docker's bridge network doesn't reach the Tailscale subnet
+# route to Postgres, so the container shares the Pi's network. The crawler's
+# own home-network guard still refuses LAN, Tailscale and metadata addresses.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -41,6 +45,7 @@ exec docker run --rm \
   --cpus 3 \
   --env-file "$ENV_FILE" \
   --add-host "$PGHOST:$PG_IP" \
+  --network host \
   -v "$MODEL_MOUNT" \
   -v "$DATA:/data:ro" \
   "$IMAGE" "$@"
