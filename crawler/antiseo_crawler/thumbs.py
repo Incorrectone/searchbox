@@ -92,18 +92,24 @@ def run(argv: list[str] | None = None) -> int:
             jobs = [pool.submit(_host_job, client, h, p) for h, p in by_host.items()]
             for job in jobs:
                 host, tried, found, status = job.result()
-                uploaded = []
+                uploaded, fails = [], []
                 for c in found:
                     try:
-                        if images.upload(upload_client, c.thumbnail):
-                            uploaded.append(c)
-                    except Exception:
-                        pass
+                        stored, detail = images.upload_status(upload_client, c.thumbnail)
+                    except Exception as ex:
+                        stored, detail = False, type(ex).__name__
+                    if stored:
+                        uploaded.append(c)
+                    else:
+                        fails.append(detail)
                 db.upsert_images(conn, uploaded)
                 conn.commit()
                 made += len(uploaded)
                 note = "" if status == "ok" else f"  [{status}]"
-                print(f"  {host:<40} {len(uploaded)}/{tried}{note}", flush=True)
+                if fails:  # e.g. 403 AuthenticationFailed / 409 PublicAccessNotPermitted = bad SAS
+                    note += f"  UPLOAD FAILED x{len(fails)} (HTTP {', '.join(sorted(set(fails)))})"
+                print(f"  {host:<40} {len(found)} images found, {len(uploaded)} uploaded, of {tried} posts{note}",
+                      flush=True)
 
         # New thumbnails change what /images returns, so invalidate cached results.
         if made:

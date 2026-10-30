@@ -163,10 +163,17 @@ def fetch_thumbnail(fetch, url: str, alt: str | None) -> Thumbnail | None:
 
 
 def upload(client: httpx.Client, thumb: Thumbnail) -> bool:
-    """PUT the WebP into the container using the write-only SAS token.
+    return upload_status(client, thumb)[0]
 
-    `If-None-Match: *` makes an existing blob a no-op (409), so duplicates are
-    never rewritten.
+
+def upload_status(client: httpx.Client, thumb: Thumbnail) -> tuple[bool, str]:
+    """PUT the WebP into the container using the create-only SAS token.
+
+    Returns (stored, detail). `If-None-Match: *` makes an existing blob a no-op:
+    Azure answers 409 BlobAlreadyExists, which counts as stored. Any OTHER 409
+    (e.g. PublicAccessNotPermitted, sent when the SAS is missing or broken) is a
+    failure: treating every 409 as "exists" once recorded images that were never
+    uploaded.
     """
     url = f"{CFG.blob_base_url.rstrip('/')}/{thumb.blob_path}?{CFG.blob_sas.lstrip('?')}"
     resp = client.put(
@@ -179,4 +186,9 @@ def upload(client: httpx.Client, thumb: Thumbnail) -> bool:
             "If-None-Match": "*",
         },
     )
-    return resp.status_code in (201, 409)
+    code = resp.headers.get("x-ms-error-code", "")
+    if resp.status_code == 201:
+        return True, "201"
+    if resp.status_code == 409 and code == "BlobAlreadyExists":
+        return True, "409 BlobAlreadyExists"
+    return False, f"{resp.status_code} {code}".strip()

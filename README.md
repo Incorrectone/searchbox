@@ -37,14 +37,19 @@ flowchart LR
     R["Upstash Redis<br/>rate limiter + cache (TLS)"]
     G["Gemini API<br/>Flash Lite, then Gemma 4"]
     API --> R
-    API -->|"on click"| G
+    API -->|"on click, relay token"| GR
+
+    subgraph GCPR["GCP Mumbai"]
+        GR["Cloud Run relay<br/>holds the Gemini key"]
+    end
+    GR --> G
 
     subgraph HOME["Home: Raspberry Pi 5 (outbound-only)"]
         CR["Crawler container<br/>+ ONNX embedding"]
     end
     CR -->|"home ISP"| WEB["Indie blogs"]
     CR -->|"Tailscale subnet route :5432 only"| PG
-    CR -->|"write-only SAS"| BL
+    CR -->|"create-only SAS"| BL
 
     subgraph GCP["GCP (free tier)"]
         GCS["GCS raw logs"] --> BQ["BigQuery"]
@@ -60,8 +65,8 @@ flowchart LR
 | **App** | Azure VM `B2pts_v2` (Arm64), private | ASP.NET Core API + retro web UI; embeds queries in-process with ONNX Runtime. |
 | **Data** | Azure, private | PostgreSQL 17 + pgvector (HNSW, `halfvec`); Blob storage for thumbnails. |
 | **Cache / limits** | Upstash Redis (free tier, TLS) | Leaky-bucket rate limiter and result cache; everything fails open if it's down. |
-| **AI** | Gemini API | Optional summary of the top 5 results, with a model fallback chain. |
-| **Crawler** | Raspberry Pi 5 at home | Weekly feed crawl, text extraction, quality gate, thumbnails, embedding. Makes outbound connections only. |
+| **AI** | Gemini API, through a Cloud Run relay in Mumbai | Optional summary of the top 5 results, with a model fallback chain. The relay exists because Gemini refuses requests from Hong Kong (Azure East Asia); it also keeps the Gemini key off the app VM. |
+| **Crawler** | Raspberry Pi 5 at home | Feed crawl (run by hand; a weekly systemd timer is included), text extraction, quality gate, thumbnails, embedding. Makes outbound connections only. |
 | **SIEM** | GCP | GCS → BigQuery (hourly loads), Cloud Run IP enrichment (AbuseIPDB, IPinfo), Looker Studio dashboard. |
 
 ### How a search works
@@ -70,15 +75,15 @@ flowchart LR
 3. The **cache admits a query only on its second sighting** (an in-memory Bloom filter), so one-off queries never touch Redis.
 4. The API embeds the query with **all-MiniLM-L6-v2** (int8 ONNX, 384 dimensions), using the exact model file the crawler used (checked by SHA-256 at startup).
 5. Postgres runs two rankings, nearest embeddings (HNSW) and full-text (`tsvector`), and fuses them with **Reciprocal Rank Fusion**. Each result shows which ranking found it.
-6. **AI summary (on click):** the top 5 results go to Gemini Flash Lite, falling back to Gemma 4, under global per-model limits. The answer is plain text, and only its `[n]` citations become links, to the results themselves.
+6. **AI summary (on click):** the top 5 results go, through the relay, to Gemini Flash Lite, falling back to Gemma 4, under global per-model limits. The answer is plain text, and only its `[n]` citations become links, to the results themselves.
 
 ### How the index is built
-Once a week the Pi:
+On each crawl, the Pi:
 1. reads the allowlisted domains;
 2. fetches each RSS/Atom feed with a conditional GET;
 3. extracts clean text from new posts with trafilatura, keeping English posts of 300+ words;
 4. runs the **quality gate** (ad/affiliate scripts, listicle titles, LLM boilerplate, posting bursts) and logs the reasons;
-5. makes **one thumbnail per post** (re-encoded to WebP) and uploads it with a write-only token;
+5. makes **one thumbnail per post** (re-encoded to WebP) and uploads it with a create-only token;
 6. embeds each post and upserts it;
 7. bumps `index_version`.
 
@@ -101,6 +106,7 @@ Designed so that **nothing on the internet can open a connection into the home n
   - The UI inserts crawled text only as text, never HTML, and a strict Content-Security-Policy blocks inline scripts.
   - AI answers can't create links: only `[n]` citations become links, to known result URLs.
   - Client IPs are trusted only from the edge VM, and the edge trusts Cloudflare's header only from Cloudflare's ranges.
+- **AI relay.** Gemini calls go through a Cloud Run relay that accepts only a shared token, only `generateContent` for two allowlisted models, and only small JSON bodies. The real key lives in Secret Manager; a leaked token can't reveal it.
 - **Model integrity.** The embedding model is pinned by SHA-256. The crawler and the API refuse to run with a different file, and a Python↔C# parity test confirms they produce identical vectors.
 - **A privacy-aware dashboard.** The public view masks IPs (IPv4 /24, IPv6 /48) and excludes the owner's addresses.
 
@@ -111,11 +117,11 @@ Designed so that **nothing on the internet can open a connection into the home n
 | Area | Tools |
 |---|---|
 | Infrastructure as code | Terraform (azurerm 4.x), remote state in Azure Storage, developed in GitHub Codespaces |
-| Cloud | Azure (VMs, VNet/NSGs, PostgreSQL Flexible Server, Blob Storage), GCP (GCS, BigQuery, Cloud Run, Looker Studio), Cloudflare, Upstash |
+| Cloud | Azure (VMs, VNet/NSGs, PostgreSQL Flexible Server, Blob Storage), GCP (Cloud Run, Secret Manager, GCS, BigQuery, Looker Studio), Cloudflare, Upstash |
 | Networking | Tailscale (tagged nodes, subnet router, ACL with tests), Caddy, Anubis |
 | API | C# / ASP.NET Core 10 (minimal APIs), Npgsql, StackExchange.Redis, xUnit |
 | Search | PostgreSQL 17, pgvector 0.8 (HNSW, `halfvec`), full-text search, Reciprocal Rank Fusion |
-| ML | all-MiniLM-L6-v2, ONNX Runtime (Python and .NET), int8 dynamic quantization, Hugging Face `tokenizers` / `Microsoft.ML.Tokenizers`, Gemini Flash Lite / Gemma 4 for summaries |
+| ML | all-MiniLM-L6-v2, ONNX Runtime (Python and .NET), int8 dynamic quantization, Hugging Face `tokenizers` / `Microsoft.ML.Tokenizers`, Gemini 3.5 Flash Lite / Gemma 4 26B for summaries |
 | Crawler | Python, httpx, feedparser, trafilatura, Pillow, psycopg 3, Docker, systemd timers |
 | Web UI | Plain HTML/CSS/JS, retro 2007 styling |
 | Observability | Vector, BigQuery, UptimeRobot, Healthchecks.io |
@@ -127,18 +133,20 @@ Designed so that **nothing on the internet can open a connection into the home n
 ```
 infra/azure/        Terraform: network + NSGs, app VM, Postgres, thumbnail storage, edge VM (Caddy)
 api/                ASP.NET Core API + web UI, tests, deploy scripts  (api/HOW-IT-WORKS.md explains the code)
+relay/              Cloud Run relay for Gemini (stdlib Python) + tests
+infra/gcp/          Terraform: GCP APIs, relay service account, secrets
 crawler/            Feed crawler, quality gate, thumbnails, embedder, search CLI, Docker + systemd
 db/                 Database schema and roles
 ```
 
-Setup: [`crawler/README.md`](crawler/README.md) and [`api/README.md`](api/README.md).
+Setup: [`crawler/README.md`](crawler/README.md), [`api/README.md`](api/README.md) and [`relay/README.md`](relay/README.md).
 
 ---
 
 ## Cost
 
 Built on the Azure for Students credit and free tiers:
-- **Free:** both VMs, Postgres B1ms with 32 GB, both OS disks, Blob storage (5 GB), Upstash Redis, Gemini API, GCP and Cloudflare.
+- **Free:** both VMs, Postgres B1ms with 32 GB, both OS disks, Blob storage (5 GB), Upstash Redis, the Gemini API, GCP (the Cloud Run relay, Secret Manager, and the logging pipeline) and Cloudflare.
 - **Paid from credit:** the edge VM's public IP, about **$3.60/month**.
 
 Everything on Azure is in one resource group managed by Terraform, so tearing it down or rebuilding it is one command each.
