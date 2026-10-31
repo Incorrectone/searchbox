@@ -11,3 +11,4 @@ infra/azure/keys/antiseo
 __pycache__/
 *.zip
 envvv
+infra/gcp/myip.txt

@@ -32,15 +32,18 @@ chmod 700 "$STAGE"
 
 echo "== render configs"
 # The probe regex lives in one file; Anubis denies it and the SIEM counts it.
-python3 - "$HERE/phase3" "$STAGE" <<'PY'
-import sys, pathlib
-src, out = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
+python3 - "$HERE/phase3" "$STAGE" "$BUCKET" <<'PY'
+import sys, pathlib, re
+src, out, bucket = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2]), sys.argv[3]
+assert re.fullmatch(r"[a-z0-9][a-z0-9._-]{1,61}[a-z0-9]", bucket), f"odd bucket name: {bucket!r}"
 rx = (src / "probe-regex.txt").read_text().strip()
 assert "'" not in rx, "probe regex must not contain a single quote (YAML quoting)"
 policy = (src / "anubis-policy.yaml").read_text().replace("__PROBE_REGEX__", rx)
 assert "__PROBE_REGEX__" not in policy
 (out / "anubis-policy.yaml").write_text(policy)
-(out / "vector.yaml").write_text((src / "vector.yaml").read_text())
+vector = (src / "vector.yaml").read_text().replace("__GCS_BUCKET__", bucket)
+assert "__GCS_BUCKET__" not in vector
+(out / "vector.yaml").write_text(vector)
 PY
 
 echo "== Vector's GCS key"
@@ -106,14 +109,13 @@ install -m 0644 vector.yaml /etc/vector/vector.yaml
 if [ -f gcs-key.json ]; then
   install -o root -g vector -m 0640 gcs-key.json /etc/vector/gcs-key.json
 fi
-printf 'GCS_BUCKET=%s\n' "$BUCKET" > /etc/default/vector
-chmod 0644 /etc/default/vector
 install -d -o vector -g vector -m 0750 /var/lib/vector
 # Vector reads Caddy's log (group caddy) and journald (the package adds systemd-journal).
 usermod -aG caddy vector
 chgrp caddy /var/log/caddy/access*.json 2>/dev/null || true
 chmod 0640 /var/log/caddy/access*.json 2>/dev/null || true
-sudo -u vector env GCS_BUCKET="$BUCKET" vector validate --no-environment /etc/vector/vector.yaml
+sudo -u vector vector validate --no-environment /etc/vector/vector.yaml
+grep -q "bucket: \"$BUCKET\"" /etc/vector/vector.yaml || { echo "!! bucket name missing from vector.yaml"; exit 1; }
 systemctl enable vector >/dev/null 2>&1
 systemctl restart vector
 sleep 3

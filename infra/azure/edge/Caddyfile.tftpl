@@ -61,14 +61,23 @@ https:// {
 		path_regexp ^/img/[0-9a-f]{2}/[0-9a-f]{64}\.webp$
 	}
 	handle @thumb {
-		uri strip_prefix /img
-		rewrite * /thumbs{path}?${read_sas}
+		# One rewrite, built from the path segments (/img/<2hex>/<64hex>.webp):
+		# Caddy sorts `rewrite` before `uri`, so a separate `uri strip_prefix`
+		# would run second and leave /thumbs/img/... (Azure: 404).
+		rewrite * /thumbs/{http.request.uri.path.1}/{http.request.uri.path.2}?${read_sas}
 		reverse_proxy https://${blob_host} {
 			header_up -Cookie
 			header_up -Authorization
 			header_down -x-ms-*
 			header_down Cache-Control "public, max-age=31536000, immutable"
 			header_down Content-Type image/webp
+			# Errors must never get the year-long cache above, or a temporary
+			# failure is cached by Cloudflare and browsers for a year.
+			@failed status 4xx 5xx
+			handle_response @failed {
+				header Cache-Control "no-store"
+				respond 404
+			}
 		}
 	}
 	handle /img/* {

@@ -17,9 +17,9 @@ terraform {
   # Same state storage as infra/azure, different key. Copy the three values
   # from the backend block in infra/azure (your versions.tf).
   backend "azurerm" {
-    resource_group_name  = "CHANGE_ME"
-    storage_account_name = "CHANGE_ME"
-    container_name       = "CHANGE_ME"
+	resource_group_name  = "rg-tfstate"
+    storage_account_name = "tfstateantiseo11401"
+    container_name       = "tfstate"
     key                  = "gcp.tfstate"
     use_azuread_auth     = true
   }

@@ -1,5 +1,6 @@
 # Vector on the edge VM: Caddy + Anubis logs -> edge event schema -> GCS.
-# Installed as /etc/vector/vector.yaml. GCS_BUCKET comes from /etc/default/vector.
+# Installed as /etc/vector/vector.yaml; phase3.sh fills in __GCS_BUCKET__.
+# (Not an environment variable: Vector sent "${...}" to GCS literally.)
 #
 #   /var/log/caddy/access.json ─┐
 #                               ├─> one row per event (golden schema v3) ─> gs://<bucket>/edge/*.ndjson.gz
@@ -129,7 +130,7 @@ sinks:
   gcs:
     type: gcp_cloud_storage
     inputs: [caddy_events, anubis_events]
-    bucket: "${GCS_BUCKET}"
+    bucket: "__GCS_BUCKET__"
     credentials_path: /etc/vector/gcs-key.json
     key_prefix: "edge/"
     filename_time_format: "%Y%m%d-%H%M%S"
