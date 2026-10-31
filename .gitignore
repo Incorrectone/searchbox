@@ -8,5 +8,6 @@ secret*
 *.tfplan
 models/
 infra/azure/keys/antiseo
-__pycache__/envvv
+__pycache__/
 *.zip
+envvv
