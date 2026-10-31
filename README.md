@@ -174,12 +174,6 @@ Everything on Azure is in one resource group managed by Terraform, so tearing it
 
 ---
 
-## Prior art
-
-[Marginalia Search](https://search.marginalia.nu/), [Kagi Small Web](https://kagi.com/smallweb), [Search My Site](https://searchmysite.net/), [Wiby](https://wiby.me/).
-
----
-
 ## AI Usage
 
-The architecture was planned with AI assistance, and most of the code was written by AI under my direction. I reviewed, deployed and operate it.
+The architecture was planned and coded with AI assistance, code was written by AI under my direction. I reviewed, deployed and operate it.
