@@ -12,3 +12,7 @@ __pycache__/
 *.zip
 envvv
 infra/gcp/myip.txt
+
+# Python bytecode
+__pycache__/
+*.pyc
