@@ -2,7 +2,6 @@
 
 ASP.NET Core 10 API + retro web UI, running on the app VM (`10.20.2.4:8080`), behind Caddy on the edge VM.
 
-- **How the code works (C#/.NET guide):** [`HOW-IT-WORKS.md`](HOW-IT-WORKS.md)
 - **Endpoints:** `GET /api/v1/search`, `/images`, `/summary`, `/stats`, `/health`, and `/openapi/v1.json`
 
 ```

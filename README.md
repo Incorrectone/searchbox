@@ -6,6 +6,26 @@ The edge works as a **honeypot-style sensor**: a proof-of-work gate challenges b
 
 This is a portfolio project.
 
+## Screenshots
+
+<p align="center">
+  <img src="docs/screenshots/search-results.png" alt="SearchBox results page for the query 'why C is great': results from independent blogs, each tagged with its meaning (S) and keyword (K) rank and its fusion score, next to the Index Status, ranking and AI-summary panels" width="100%">
+</p>
+<p align="center"><em>Hybrid search. Each result shows which ranking found it, by meaning (S) and by keywords (K), and its Reciprocal Rank Fusion score. The index status panel is live data.</em></p>
+
+<table>
+  <tr>
+    <td align="center" width="50%">
+      <img src="docs/screenshots/ai-summary-mobile.png" alt="AI summary on a phone for 'why C++ is great', answered by Gemini 3.5 Flash Lite with [1] and [5] citations and the five source posts listed" width="300"><br>
+      <em>AI summary on mobile. It answers only from the top five results, cites them as [n], and says so when they don't answer the question.</em>
+    </td>
+    <td align="center" width="50%">
+      <img src="docs/screenshots/images-mobile.png" alt="Images tab on a phone: thumbnails from blog posts with titles and blog names" width="300"><br>
+      <em>Image search. One sanitised WebP thumbnail per post, served from private Blob storage through the edge.</em>
+    </td>
+  </tr>
+</table>
+
 ---
 
 ## Architecture
@@ -132,7 +152,7 @@ Designed so that **nothing on the internet can open a connection into the home n
 
 ```
 infra/azure/        Terraform: network + NSGs, app VM, Postgres, thumbnail storage, edge VM (Caddy)
-api/                ASP.NET Core API + web UI, tests, deploy scripts  (api/HOW-IT-WORKS.md explains the code)
+api/                ASP.NET Core API + web UI, tests, deploy scripts
 relay/              Cloud Run relay for Gemini (stdlib Python) + tests
 infra/gcp/          Terraform: relay, SIEM (log bucket, BigQuery dataset + views, service accounts, scheduler)
 siem/               Hourly SIEM job (load + enrich) + tests, dashboard spec
