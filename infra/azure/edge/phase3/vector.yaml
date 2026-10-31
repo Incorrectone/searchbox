@@ -1,0 +1,154 @@
+# Vector on the edge VM: Caddy + Anubis logs -> edge event schema -> GCS.
+# Installed as /etc/vector/vector.yaml. GCS_BUCKET comes from /etc/default/vector.
+#
+#   /var/log/caddy/access.json ─┐
+#                               ├─> one row per event (golden schema v3) ─> gs://<bucket>/edge/*.ndjson.gz
+#   journald: anubis@searchbox ─┘
+#
+# Every 15 min (or 20 MB) one gzipped NDJSON file goes to GCS. The SIEM job
+# loads new files into BigQuery hourly. A disk buffer keeps events through a
+# GCS outage or a reboot.
+#
+# Tests: vector test vector.yaml vector.tests.yaml   (no network needed)
+
+data_dir: /var/lib/vector
+
+sources:
+  caddy_log:
+    type: file
+    include: [/var/log/caddy/access.json]
+    read_from: beginning   # first start only; afterwards Vector resumes from its checkpoint
+
+  anubis_journal:
+    type: journald
+    include_units: [anubis@searchbox.service]
+
+transforms:
+  caddy_events:
+    type: remap
+    inputs: [caddy_log]
+    # drop_on_abort (default true): lines that aren't access-log JSON are dropped.
+    source: |
+      raw, err = parse_json(.message)
+      if err != null || !is_object(raw) || raw.logger == null || !starts_with(string!(raw.logger), "http.log.access") {
+        abort
+      }
+      req = object(raw.request) ?? {}
+      hdrs = object(req.headers) ?? {}
+
+      client_ip = string(req.client_ip) ?? string(req.remote_ip) ?? ""
+      remote_ip = string(req.remote_ip) ?? ""
+      # Caddy only fills client_ip from CF-Connecting-IP when the socket peer is
+      # a Cloudflare range (trusted_proxies), so a difference means "via Cloudflare".
+      via_cf = client_ip != "" && client_ip != remote_ip
+
+      uri = string(req.uri) ?? "/"
+      # Drop the query string: search terms are never stored in the SIEM.
+      path = truncate(string(split(uri, "?")[0]) ?? "/", 512)
+
+      ua = string(hdrs."User-Agent"[0]) ?? ""
+      country = null
+      if via_cf {
+        # Only trusted when the request really came through Cloudflare;
+        # a direct visitor could send any Cf-Ipcountry header.
+        country = string(hdrs."Cf-Ipcountry"[0]) ?? null
+      }
+
+      edge_path = if via_cf { "cloudflare" } else { "direct" }
+
+      route = "web"
+      if starts_with(path, "/api/") { route = "api" } else if starts_with(path, "/img/") { route = "img" }
+
+      ts_us = to_int((float(raw.ts) ?? 0.0) * 1000000.0)
+
+      . = {
+        "ts": format_timestamp!(from_unix_timestamp!(ts_us, unit: "microseconds"), "%Y-%m-%d %H:%M:%S%.6f"),
+        "event_source": "caddy",
+        "edge_path": edge_path,
+        "client_ip": client_ip,
+        "cf_country": country,
+        "method": string(req.method) ?? null,
+        "host": truncate(string(req.host) ?? "", 255),
+        "path": path,
+        "status": int(raw.status) ?? null,
+        "latency_ms": round((float(raw.duration) ?? 0.0) * 1000.0, precision: 3),
+        "bytes_out": int(raw.size) ?? null,
+        "user_agent": truncate(ua, 512),
+        "route": route,
+        "anubis_action": null,
+        "anubis_rule": null,
+        "request_id": string(raw.request_id) ?? null
+      }
+
+  anubis_events:
+    type: remap
+    inputs: [anubis_journal]
+    source: |
+      raw, err = parse_json(.message)
+      if err != null || !is_object(raw) { abort }
+      msg = string(raw.msg) ?? ""
+      # Only the three INFO lines that describe a decision. Passing requests with
+      # a valid cookie aren't logged at INFO; Caddy's log covers those.
+      action = if msg == "new challenge issued" {
+        "CHALLENGE"
+      } else if msg == "challenge accepted" {
+        "PASS"
+      } else if msg == "explicit deny" {
+        "DENY"
+      } else {
+        null
+      }
+      if action == null { abort }
+
+      t, err = parse_timestamp(string(raw.time) ?? "", "%+")
+      if err != null { t = now() }
+
+      rule = string(raw.check_result.name) ?? null
+      if rule == null && action == "CHALLENGE" { rule = "bot/challenge-everyone" }
+
+      . = {
+        "ts": format_timestamp!(t, "%Y-%m-%d %H:%M:%S%.6f"),
+        "event_source": "anubis",
+        "edge_path": null,
+        "client_ip": string(raw."x-real-ip") ?? "",
+        "cf_country": null,
+        "method": string(raw.method) ?? null,
+        "host": truncate(string(raw.host) ?? "", 255),
+        "path": truncate(string(split(string(raw.path) ?? "/", "?")[0]) ?? "/", 512),
+        "status": null,
+        "latency_ms": null,
+        "bytes_out": null,
+        "user_agent": truncate(string(raw.user_agent) ?? "", 512),
+        "route": "web",
+        "anubis_action": action,
+        "anubis_rule": rule,
+        "request_id": null
+      }
+
+sinks:
+  gcs:
+    type: gcp_cloud_storage
+    inputs: [caddy_events, anubis_events]
+    bucket: "${GCS_BUCKET}"
+    credentials_path: /etc/vector/gcs-key.json
+    key_prefix: "edge/"
+    filename_time_format: "%Y%m%d-%H%M%S"
+    filename_append_uuid: true
+    filename_extension: "ndjson.gz"
+    compression: gzip
+    encoding:
+      codec: json
+    framing:
+      method: newline_delimited
+    batch:
+      timeout_secs: 900          # ~2.9k files a month: under GCS's 5k free writes
+      max_bytes: 20000000
+    buffer:
+      type: disk
+      max_size: 268435488        # 256 MiB (Vector's minimum for disk buffers)
+      when_full: drop_newest
+    # The key can only CREATE objects (roles/storage.objectCreator). The default
+    # healthcheck reads bucket metadata, which that role can't, and a failed
+    # check would stop `vector validate` (run before every start) from passing.
+    healthcheck:
+      enabled: false

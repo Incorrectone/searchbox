@@ -1,0 +1,49 @@
+# Anubis bot policy for SearchBox (Phase 3). Rules are checked top to bottom;
+# the first match wins. Installed as /etc/anubis/searchbox.botPolicies.yaml.
+#
+# Anubis' stock policy lets non-browser clients (curl, Go-http-client, most
+# scanners) straight through. This one challenges everything except a few
+# "keep the internet working" paths, and denies well-known exploit probes
+# outright, so the SIEM sees a clear funnel: challenged -> solved / denied.
+#
+# Not covered here: /api/* and /img/* never reach Anubis (Caddy routes them
+# straight to the app and to Blob storage); they have their own rate limits.
+
+bots:
+  # /.well-known/*, /favicon.*, /robots.txt, /sitemap.xml
+  - import: (data)/common/keep-internet-working.yaml
+
+  # Exploit probes: nothing legitimate ever asks for these on this site.
+  - name: exploit-probes
+    # Filled in by phase3.sh from probe-regex.txt (the SIEM uses the same file)
+    path_regex: '__PROBE_REGEX__'
+    action: DENY
+
+  # Everyone else, browsers and scripts alike, solves a proof-of-work first.
+  - name: challenge-everyone
+    path_regex: .*
+    action: CHALLENGE
+    challenge:
+      difficulty: 4
+      algorithm: fast
+
+# Denied and challenged clients get HTTP 200 (Anubis' default). Scrapers tend
+# to stop retrying once they see a 200, and the SIEM reads the outcome from
+# Anubis' own log lines rather than from the status code.
+status_codes:
+  CHALLENGE: 200
+  DENY: 200
+
+store:
+  backend: memory
+  parameters: {}
+
+logging:
+  sink: stdio   # -> journald -> Vector
+  level: INFO   # "new challenge issued", "challenge accepted", "explicit deny"
+
+metrics:
+  bind: "127.0.0.1:9090"
+  network: tcp
+
+dnsbl: false

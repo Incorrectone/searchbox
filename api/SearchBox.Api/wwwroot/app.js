@@ -93,7 +93,9 @@ async function loadStats() {
     : "AI summary is switched off on this server.";
   $("ai-btn").disabled = !s.summary_enabled;
   if (s.dashboard_url) {
-    $("dash-link").href = safeHref(s.dashboard_url);
+    // The report is framed on our own page, so visitors stay on the site.
+    $("dash-link").href = "/security.html";
+    $("dash-link").removeAttribute("target");
     $("dash-link-wrap").classList.remove("is-hidden");
   }
 }

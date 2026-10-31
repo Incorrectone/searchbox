@@ -16,6 +16,7 @@ It only makes outbound connections. Nothing connects to the Pi.
 | `antiseo_crawler/search.py` | CLI hybrid search (same RRF query the API will use) |
 | `antiseo_crawler/seed.py` | add domains (Kagi Small Web sample or your list) |
 | `antiseo_crawler/images.py` | one thumbnail per post: pick, sanitize (re-encode to WebP), upload to Azure Blob |
+| `antiseo_crawler/thumbs.py` | backfill: thumbnails for posts indexed before Blob was set up (`run.sh thumbs`) |
 | `antiseo_crawler/prepare_model.py` | one-time model download + int8 quantization (done in the Codespace, see below) |
 | `deploy/run.sh` | runs any command in the locked-down container |
 | `deploy/antiseo-crawl.{service,timer}` | Sunday 03:00 IST schedule |
@@ -48,7 +49,7 @@ chmod 600 ~/.antiseo/crawler.env
 ```
 Optional: add `HC_URL=https://hc-ping.com/<your-check-uuid>` for Healthchecks.io.
 Phase 2: add `BLOB_BASE_URL` and `BLOB_SAS` (from `terraform output`) to turn on thumbnails; without them, images are skipped.
-No quotes in this file; Docker's env-file format takes values literally.
+No quotes, `export` or spaces in this file; Docker's env-file format takes values literally. Write it with `<<'EOF'` (quoted) and type the values in, so the shell can't replace them with empty variables.
 
 **3. Build the image** (5–15 min on a Pi)
 ```bash
@@ -97,9 +98,11 @@ journalctl -u antiseo-crawl -n 50                # logs of the last run
 
 | Symptom | Cause / fix |
 |---|---|
-| `connection timeout` to Postgres inside the container, but `psql` on the Pi works | Docker's bridge network isn't reaching the Tailscale route. Add `--network host \` to the `docker run` in `deploy/run.sh` (the container then shares the Pi's network; the home-network guard still applies to everything it fetches). |
+| `connection timeout` to Postgres inside the container, but `psql` on the Pi works | Check `PG_IP` matches the IP in `/etc/hosts`, and that `deploy/run.sh` still has `--network host` (Docker's bridge network doesn't reach the Tailscale route). |
 | Every blog says `blocked (... resolves to non-public ...)` | DNS inside the container is returning private addresses (e.g. a Pi-hole). Check `docker run --rm antiseo-crawler ...` can resolve public names. Never "fix" this with `ALLOW_PRIVATE_ADDRESSES=1`. |
-| `N thumbnails` is always 0 | `BLOB_BASE_URL`/`BLOB_SAS` missing or expired, or `db/002_images.sql` not applied. |
+| `N thumbnails` is always 0 | `BLOB_BASE_URL`/`BLOB_SAS` missing or expired, or `db/002_images.sql` not applied. Posts indexed before the Blob settings existed need `crawler/deploy/run.sh thumbs` once. |
+| `could not translate host name ...postgres.database.azure.com` | Postgres has private DNS only. Put `<private IP> <FQDN>` in the Pi's `/etc/hosts`; for the container, `run.sh` adds it via `--add-host` (set `PG_IP` if it isn't `10.20.3.4`). |
+| `local user with ID 1000 does not exist` | `PGUSER` is empty in `crawler.env`. |
 | `Model mismatch` | The DB was built with a different model.onnx. Use the original file, or empty `documents` and delete the `embedding_model` row in `meta` to rebuild. |
 | `missing .../crawler.env` | Step 2. |
 | A blog shows `backed off (403 ...)` | It's blocking or rate limiting bots. Expected for some; the crawler leaves it alone until next week. |

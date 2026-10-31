@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SearchBox: live security dashboard</title>
+<meta name="description" content="Every request that reaches SearchBox, human or bot, analysed in BigQuery: challenges, exploit probes, countries and networks. IPs are masked.">
+<link rel="stylesheet" href="/app.css">
+<script src="/security.js" defer></script>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="wrap topbar-row">
+    <nav class="tabs" aria-label="Pages">
+      <a href="/" class="tab">Web</a><span class="sep">|</span>
+      <a href="/?tab=images" class="tab">Images</a><span class="sep">|</span>
+      <a href="/security.html" class="tab is-active">Security</a>
+    </nav>
+    <nav class="toplinks" aria-label="Project links">
+      <a href="/openapi/v1.json" target="_blank" rel="noopener">API</a>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap sec-main">
+  <h1 class="sec-title"><a href="/" class="wordmark-link"><span class="wordmark">Search<span>Box</span></span></a> Security dashboard</h1>
+
+  <section class="panel">
+    <div class="panel-head"><b>&#128737; What you're looking at</b><span class="small muted">near-real-time (&le; 1 h)</span></div>
+    <div class="gadget-body sec-explain">
+      <p>Every request that reaches this site, from people and bots alike, is logged at the edge and analysed in BigQuery.
+         Pages sit behind a <b>proof-of-work challenge</b> (Anubis); requests for things like <code>/.env</code> or
+         <code>/wp-login.php</code> are <b>denied</b> and counted as exploit probes.</p>
+      <p>IP addresses are <b>masked to their network</b> (IPv4 /24, IPv6 /48) and the owner's own networks are excluded.
+         Country, network owner and abuse score come from Cloudflare, IPinfo and AbuseIPDB.</p>
+      <p class="muted">Pipeline: Caddy + Anubis logs &rarr; Vector &rarr; Cloud Storage &rarr; BigQuery (hourly) &rarr; Looker Studio.</p>
+    </div>
+  </section>
+
+  <section class="panel sec-frame-panel">
+    <div id="dash-missing" class="gadget-body">Loading the dashboard&hellip;</div>
+    <iframe id="dash-frame" class="sec-frame is-hidden" title="Live security dashboard (Looker Studio)"
+            sandbox="allow-storage-access-by-user-activation allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox"
+            referrerpolicy="strict-origin-when-cross-origin" loading="lazy"></iframe>
+  </section>
+</main>
+
+<footer class="footer">
+  <p class="footer-links"><a href="/">Back to search</a></p>
+  <p class="small muted">SearchBox Labs: a portfolio project.</p>
+</footer>
+
+</body>
+</html>

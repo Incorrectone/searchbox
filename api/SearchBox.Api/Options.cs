@@ -30,7 +30,10 @@ public sealed class SearchBoxOptions
 
 public sealed class GeminiOptions
 {
-    /// <summary>AI Studio API key. Empty = the summary feature is switched off.</summary>
+    /// <summary>
+    /// Sent as x-goog-api-key. With the relay (relay/), this is the relay token and the
+    /// real Gemini key lives only on the relay. Empty = the summary feature is switched off.
+    /// </summary>
     public string ApiKey { get; set; } = "";
 
     public string Endpoint { get; set; } = "https://generativelanguage.googleapis.com/v1beta";

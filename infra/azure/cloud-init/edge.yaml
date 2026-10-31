@@ -39,7 +39,9 @@ runcmd:
   - [sh, -c, "install -o root -g caddy -m 0640 /root/edge-staging/origin.key /etc/caddy/origin.key"]
   - [sh, -c, "install -o root -g caddy -m 0640 /root/edge-staging/Caddyfile /etc/caddy/Caddyfile"]
   - [sh, -c, "rm -rf /root/edge-staging && mkdir -p /var/log/caddy && chown caddy:caddy /var/log/caddy"]
-  - [sh, -c, "caddy validate --config /etc/caddy/Caddyfile && systemctl restart caddy"]
+  # validate as the caddy user: run as root, it would create the log file owned by root
+  # and the real service (user caddy) could then not open it
+  - [sh, -c, "runuser -u caddy -- caddy validate --config /etc/caddy/Caddyfile && systemctl restart caddy"]
   # Tailscale (admin access only; the edge talks to the app over the VNet)
   - [sh, -c, "curl -fsSL https://tailscale.com/install.sh | sh"]
   - tailscale up --authkey=${ts_authkey} --ssh --advertise-tags=tag:edge --hostname=antiseo-edge

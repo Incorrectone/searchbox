@@ -1,5 +1,4 @@
-# GCP side of Searchbox. For now: what the Gemini relay needs.
-# (Phase 3 adds GCS + BigQuery here.)
+# GCP side of Searchbox: the Gemini relay (this file) and the SIEM (siem.tf).
 #
 # Terraform creates the pieces that rarely change: APIs, a service account,
 # and two empty secrets. The secret VALUES are added with gcloud (relay/README.md)
@@ -18,9 +17,9 @@ terraform {
   # Same state storage as infra/azure, different key. Copy the three values
   # from the backend block in infra/azure (your versions.tf).
   backend "azurerm" {
-    resource_group_name  = "rg-tfstate"
-    storage_account_name = "tfstateantiseo11401"
-    container_name       = "tfstate"
+    resource_group_name  = "CHANGE_ME"
+    storage_account_name = "CHANGE_ME"
+    container_name       = "CHANGE_ME"
     key                  = "gcp.tfstate"
     use_azuread_auth     = true
   }
@@ -47,7 +46,11 @@ locals {
     "run.googleapis.com",              # Cloud Run
     "cloudbuild.googleapis.com",       # builds the container for `gcloud run deploy --source`
     "artifactregistry.googleapis.com", # stores that container
-    "secretmanager.googleapis.com",    # the Gemini key and relay token
+    "secretmanager.googleapis.com",    # the Gemini key, relay token, SIEM API keys
+    "iam.googleapis.com",              # service accounts and Vector's key
+    "storage.googleapis.com",          # edge log bucket
+    "bigquery.googleapis.com",         # SIEM dataset
+    "cloudscheduler.googleapis.com",   # hourly SIEM job trigger
   ]
 }
 

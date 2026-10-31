@@ -1,10 +1,14 @@
-# Edge reverse proxy (Phase 2). Rendered by Terraform on first boot; later
-# changes: edit edge/Caddyfile.tftpl and run edge/deploy.sh.
+# Edge reverse proxy. Rendered by Terraform on first boot; later changes:
+# edit edge/Caddyfile.tftpl, `terraform apply`, then run edge/deploy.sh.
 #
 # Request flow:
-#   Cloudflare --443--> Caddy --+--> /img/<hash>.webp  -> Azure Blob (read-only SAS)
-#                               +--> /api/*, /*        -> app VM ${app_ip}:8080
-#   app VM down               --> fallback page (or JSON for /api/*)
+#   Cloudflare --443--> Caddy --+--> /img/<hash>.webp -> Azure Blob (read-only SAS)
+#                               +--> /api/*           -> app VM ${app_ip}:8080 (rate-limited there)
+#                               +--> everything else  -> Anubis 127.0.0.1:8923 (proof-of-work) -> app VM
+#   app VM or Anubis down     --> fallback page (or JSON for /api/*)
+#
+# Anubis is installed by edge/phase3.sh. On a freshly rebuilt edge VM, run that
+# script once: until then, pages show the fallback page and /api/* still works.
 {
 	# Origin cert is installed manually (Cloudflare Origin CA): no ACME, and
 	# we define the :80 site ourselves so probes on port 80 are logged too.
@@ -24,6 +28,7 @@
 		output file /var/log/caddy/access.json {
 			roll_size 20MiB
 			roll_keep 5
+			mode 0640 # group caddy may read: Vector (in that group) ships it to the SIEM
 		}
 		format json
 	}
@@ -36,6 +41,7 @@ http:// {
 
 https:// {
 	import access_log
+	log_append request_id {http.request.uuid}
 	tls /etc/caddy/origin.pem /etc/caddy/origin.key
 
 	encode zstd gzip
@@ -58,7 +64,6 @@ https:// {
 		uri strip_prefix /img
 		rewrite * /thumbs{path}?${read_sas}
 		reverse_proxy https://${blob_host} {
-			header_up Host {upstream_hostport}
 			header_up -Cookie
 			header_up -Authorization
 			header_down -x-ms-*
@@ -77,9 +82,19 @@ https:// {
 	}
 
 	handle {
-		# Phase 3: this goes through Anubis (127.0.0.1:8923) instead.
-		reverse_proxy ${app_ip}:8080 {
+		# Pages go through Anubis, which challenges first and then proxies to the app.
+		reverse_proxy 127.0.0.1:8923 {
+			# Anubis reads the visitor's IP from X-Real-Ip (and binds its cookie to it).
+			header_up X-Real-Ip {client_ip}
 			header_up X-Forwarded-For {client_ip}
+			# If the app VM is down, Anubis answers 502 itself; Caddy's handle_errors
+			# only sees Caddy's own failures, so catch Anubis' response here too.
+			@down status 502 503 504
+			handle_response @down {
+				root * /srv/fallback
+				rewrite * /index.html
+				file_server
+			}
 		}
 	}
 

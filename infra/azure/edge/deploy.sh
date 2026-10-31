@@ -7,7 +7,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 terraform output -raw edge_caddyfile | ssh azureuser@antiseo-edge '
   sudo install -o root -g caddy -m 0640 /dev/stdin /etc/caddy/Caddyfile.new &&
-  sudo caddy validate --adapter caddyfile --config /etc/caddy/Caddyfile.new &&
+  sudo -u caddy -H caddy validate --adapter caddyfile --config /etc/caddy/Caddyfile.new &&
   sudo mv /etc/caddy/Caddyfile.new /etc/caddy/Caddyfile &&
   sudo systemctl reload caddy &&
   echo "Caddy reloaded."'

@@ -52,8 +52,8 @@ flowchart LR
     CR -->|"create-only SAS"| BL
 
     subgraph GCP["GCP (free tier)"]
-        GCS["GCS raw logs"] --> BQ["BigQuery"]
-        RJ["Cloud Run job<br/>IP enrichment"] <--> BQ
+        GCS["GCS raw logs<br/>(90 days)"] --> RJ["Cloud Run job, hourly<br/>load + IP enrichment"]
+        RJ --> BQ["BigQuery<br/>masked public views"]
         BQ --> LS["Looker Studio<br/>public dashboard"]
     end
     V -->|"every 15 min"| GCS
@@ -67,7 +67,7 @@ flowchart LR
 | **Cache / limits** | Upstash Redis (free tier, TLS) | Leaky-bucket rate limiter and result cache; everything fails open if it's down. |
 | **AI** | Gemini API, through a Cloud Run relay in Mumbai | Optional summary of the top 5 results, with a model fallback chain. The relay exists because Gemini refuses requests from Hong Kong (Azure East Asia); it also keeps the Gemini key off the app VM. |
 | **Crawler** | Raspberry Pi 5 at home | Feed crawl (run by hand; a weekly systemd timer is included), text extraction, quality gate, thumbnails, embedding. Makes outbound connections only. |
-| **SIEM** | GCP | GCS → BigQuery (hourly loads), Cloud Run IP enrichment (AbuseIPDB, IPinfo), Looker Studio dashboard. |
+| **SIEM** | GCP | GCS → hourly Cloud Run job (loads new log files into BigQuery, enriches new IPs with IPinfo and AbuseIPDB) → masked views → Looker Studio dashboard, embedded at `/security.html`. |
 
 ### How a search works
 1. Cloudflare → Caddy → app VM over the private VNet (the browser UI passes the Anubis challenge first; `/api/*` goes around it for app clients).
@@ -108,7 +108,7 @@ Designed so that **nothing on the internet can open a connection into the home n
   - Client IPs are trusted only from the edge VM, and the edge trusts Cloudflare's header only from Cloudflare's ranges.
 - **AI relay.** Gemini calls go through a Cloud Run relay that accepts only a shared token, only `generateContent` for two allowlisted models, and only small JSON bodies. The real key lives in Secret Manager; a leaked token can't reveal it.
 - **Model integrity.** The embedding model is pinned by SHA-256. The crawler and the API refuse to run with a different file, and a Python↔C# parity test confirms they produce identical vectors.
-- **A privacy-aware dashboard.** The public view masks IPs (IPv4 /24, IPv6 /48) and excludes the owner's addresses.
+- **A privacy-aware SIEM.** Search terms (query strings) never leave the edge. The public views mask IPs (IPv4 /24, IPv6 /48) and exclude the owner's networks, and they are the dashboard's only source. Vector's GCS key can only create objects in one bucket; `Cf-Ipcountry` is trusted only on requests that really came through Cloudflare.
 
 ---
 
@@ -134,12 +134,13 @@ Designed so that **nothing on the internet can open a connection into the home n
 infra/azure/        Terraform: network + NSGs, app VM, Postgres, thumbnail storage, edge VM (Caddy)
 api/                ASP.NET Core API + web UI, tests, deploy scripts  (api/HOW-IT-WORKS.md explains the code)
 relay/              Cloud Run relay for Gemini (stdlib Python) + tests
-infra/gcp/          Terraform: GCP APIs, relay service account, secrets
+infra/gcp/          Terraform: relay, SIEM (log bucket, BigQuery dataset + views, service accounts, scheduler)
+siem/               Hourly SIEM job (load + enrich) + tests, dashboard spec
 crawler/            Feed crawler, quality gate, thumbnails, embedder, search CLI, Docker + systemd
 db/                 Database schema and roles
 ```
 
-Setup: [`crawler/README.md`](crawler/README.md), [`api/README.md`](api/README.md) and [`relay/README.md`](relay/README.md).
+Setup: [`crawler/README.md`](crawler/README.md), [`api/README.md`](api/README.md), [`relay/README.md`](relay/README.md) and [`siem/README.md`](siem/README.md).
 
 ---
 

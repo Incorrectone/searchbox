@@ -1,0 +1,108 @@
+# Unit tests for the transforms in vector.yaml. No network or GCP needed:
+#   vector test vector.yaml vector.tests.yaml
+# The inputs are real log lines (Caddy 2.11 access log, Anubis 1.28 slog JSON).
+
+tests:
+  - name: caddy request via Cloudflare
+    inputs:
+      - insert_at: caddy_events
+        type: log
+        log_fields:
+          message: '{"level":"info","ts":1793391976.140902,"logger":"http.log.access.log0","msg":"handled request","request_id":"3f2a","request":{"remote_ip":"162.158.1.2","remote_port":"41000","client_ip":"203.0.113.9","proto":"HTTP/2.0","method":"GET","host":"search.theincorrect.one","uri":"/api/v1/search?q=my+secret+query","headers":{"User-Agent":["Mozilla/5.0 test"],"Cf-Ipcountry":["IN"],"Cookie":["REDACTED"]}},"bytes_read":0,"duration":0.0123456,"size":5120,"status":200}'
+    outputs:
+      - extract_from: caddy_events
+        conditions:
+          - type: vrl
+            source: |
+              assert_eq!(.event_source, "caddy")
+              assert_eq!(.edge_path, "cloudflare")
+              assert_eq!(.client_ip, "203.0.113.9")
+              assert_eq!(.cf_country, "IN")
+              assert_eq!(.path, "/api/v1/search")
+              assert_eq!(.route, "api")
+              assert_eq!(.status, 200)
+              assert_eq!(.latency_ms, 12.346)
+              assert_eq!(.bytes_out, 5120)
+              assert_eq!(.user_agent, "Mozilla/5.0 test")
+              assert_eq!(.request_id, "3f2a")
+              assert_eq!(.ts, "2026-10-30 20:26:16.140902")
+              assert!(is_null(.anubis_action))
+
+  - name: direct hit ignores a spoofed Cf-Ipcountry
+    inputs:
+      - insert_at: caddy_events
+        type: log
+        log_fields:
+          message: '{"level":"info","ts":1793391976.5,"logger":"http.log.access.log1","msg":"handled request","request":{"remote_ip":"198.51.100.7","client_ip":"198.51.100.7","method":"GET","host":"23.101.7.18","uri":"/.env","headers":{"User-Agent":["zgrab/0.x"],"Cf-Ipcountry":["US"]}},"duration":0.0004,"size":0,"status":308}'
+    outputs:
+      - extract_from: caddy_events
+        conditions:
+          - type: vrl
+            source: |
+              assert_eq!(.edge_path, "direct")
+              assert!(is_null(.cf_country))
+              assert_eq!(.path, "/.env")
+              assert_eq!(.route, "web")
+              assert_eq!(.status, 308)
+
+  - name: non-access-log lines are dropped
+    no_outputs_from: [caddy_events]
+    inputs:
+      - insert_at: caddy_events
+        type: log
+        log_fields:
+          message: '{"level":"info","ts":1793391976.1,"logger":"tls.cache.maintenance","msg":"started background certificate maintenance"}'
+
+  - name: anubis challenge issued
+    inputs:
+      - insert_at: anubis_events
+        type: log
+        log_fields:
+          message: '{"time":"2026-10-30T23:08:06.461556543Z","level":"INFO","msg":"new challenge issued","subsystem":"anubis","host":"search.theincorrect.one","method":"GET","path":"/","user_agent":"curl/8","x-forwarded-for":"","x-real-ip":"203.0.113.9","challenge":"01a18f12","weight":0}'
+    outputs:
+      - extract_from: anubis_events
+        conditions:
+          - type: vrl
+            source: |
+              assert_eq!(.event_source, "anubis")
+              assert_eq!(.anubis_action, "CHALLENGE")
+              assert_eq!(.anubis_rule, "bot/challenge-everyone")
+              assert_eq!(.client_ip, "203.0.113.9")
+              assert_eq!(.ts, "2026-10-30 23:08:06.461556")
+
+  - name: anubis explicit deny
+    inputs:
+      - insert_at: anubis_events
+        type: log
+        log_fields:
+          message: '{"time":"2026-10-30T23:08:06.479662409Z","level":"INFO","msg":"explicit deny","subsystem":"anubis","host":"search.theincorrect.one","method":"GET","path":"/.env","user_agent":"curl/8","x-real-ip":"203.0.113.9","check_result":{"name":"bot/exploit-probes","rule":"DENY","weight":0}}'
+    outputs:
+      - extract_from: anubis_events
+        conditions:
+          - type: vrl
+            source: |
+              assert_eq!(.anubis_action, "DENY")
+              assert_eq!(.anubis_rule, "bot/exploit-probes")
+              assert_eq!(.path, "/.env")
+
+  - name: anubis challenge accepted
+    inputs:
+      - insert_at: anubis_events
+        type: log
+        log_fields:
+          message: '{"time":"2026-10-30T23:09:00Z","level":"INFO","msg":"challenge accepted","host":"search.theincorrect.one","method":"POST","path":"/.within.website/x/cmd/anubis/api/pass-challenge","user_agent":"Mozilla/5.0","x-real-ip":"203.0.113.9","check_result":{"name":"bot/challenge-everyone","rule":"CHALLENGE","weight":0},"challenge":"01a18f12"}'
+    outputs:
+      - extract_from: anubis_events
+        conditions:
+          - type: vrl
+            source: |
+              assert_eq!(.anubis_action, "PASS")
+              assert_eq!(.anubis_rule, "bot/challenge-everyone")
+
+  - name: other anubis lines are dropped
+    no_outputs_from: [anubis_events]
+    inputs:
+      - insert_at: anubis_events
+        type: log
+        log_fields:
+          message: '{"time":"2026-10-30T23:08:03Z","level":"INFO","msg":"listening","url":"http://127.0.0.1:8923"}'
