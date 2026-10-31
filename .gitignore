@@ -16,3 +16,7 @@ infra/gcp/myip.txt
 # Python bytecode
 __pycache__/
 *.pyc
+
+# Python bytecode
+__pycache__/
+*.pyc
