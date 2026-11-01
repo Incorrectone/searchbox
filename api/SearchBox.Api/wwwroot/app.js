@@ -92,6 +92,16 @@ async function loadStats() {
     ? "Models: " + s.summary_models.join(", then ")
     : "AI summary is switched off on this server.";
   $("ai-btn").disabled = !s.summary_enabled;
+  if (s.uptime && s.uptime.ratio_30d != null) {
+    // Measured by UptimeRobot every 5 minutes against /api/v1/health (fetched server-side).
+    const u = s.uptime;
+    const pct = (v) => (v == null ? "–" : `${Number(v).toFixed(2)}%`);
+    const cell = $("st-uptime");
+    cell.textContent = u.status === "down" ? `${pct(u.ratio_30d)} (down now)` : pct(u.ratio_30d);
+    cell.title = `Last 7 days: ${pct(u.ratio_7d)} · last 30 days: ${pct(u.ratio_30d)} · measured by UptimeRobot`;
+    cell.classList.toggle("is-down", u.status === "down");
+    document.querySelectorAll(".uptime-row").forEach((n) => n.classList.remove("is-hidden"));
+  }
   if (s.dashboard_url) {
     // The report is framed on our own page, so visitors stay on the site.
     $("dash-link").href = "/security.html";

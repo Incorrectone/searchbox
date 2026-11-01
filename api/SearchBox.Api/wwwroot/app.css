@@ -116,6 +116,7 @@ a:hover, a:focus-visible { text-decoration: underline; }
 .kv { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; margin: 0; padding: 8px 10px; font-size: 12px; }
 .kv dt { color: var(--muted); }
 .kv dd { margin: 0; text-align: right; font-weight: bold; }
+.kv dd.is-down { color: var(--warn); }
 .tag { display: inline-block; min-width: 16px; text-align: center; font: bold 10px var(--font); padding: 0 3px; border: 1px solid; }
 .tag-s { color: #312ebc; background: #e1dfff; border-color: #c1c1ff; }
 .tag-k { color: #005300; background: #d9f7d2; border-color: #8dfb77; }

@@ -25,6 +25,12 @@ public sealed class SearchBoxOptions
     /// <summary>Optional public Looker Studio embed URL for the security dashboard gadget.</summary>
     public string DashboardUrl { get; set; } = "";
 
+    /// <summary>
+    /// Optional UptimeRobot MONITOR-SPECIFIC API key (read-only, one monitor). When set,
+    /// /api/v1/stats includes the 7- and 30-day uptime and the UI shows it. Stays on the server.
+    /// </summary>
+    public string UptimeRobotKey { get; set; } = "";
+
     public GeminiOptions Gemini { get; set; } = new();
 }
 

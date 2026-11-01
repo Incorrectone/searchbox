@@ -109,3 +109,46 @@ public class RedisUrlTests
     public void PlainRedisUrlHasNoTls() =>
         Assert.False(RedisStore.ParseUrl("redis://127.0.0.1:6379").Ssl);
 }
+
+public class UptimeParseTests
+{
+    private static readonly DateTimeOffset Now = new(2026, 11, 1, 12, 0, 0, TimeSpan.Zero);
+
+    [Fact]
+    public void ReadsStatusAndBothRatios()
+    {
+        var u = SearchBox.Api.Monitoring.UptimeInfo.Parse(
+            """{"stat":"ok","monitors":[{"id":1,"status":2,"custom_uptime_ratio":"99.987-100.000"}]}""", Now);
+        Assert.NotNull(u);
+        Assert.Equal("up", u!.Status);
+        Assert.Equal(99.987, u.Ratio7d);
+        Assert.Equal(100.0, u.Ratio30d);
+    }
+
+    [Theory]
+    [InlineData(9, "down")]
+    [InlineData(8, "down")]
+    [InlineData(0, "paused")]
+    [InlineData(1, "not_checked")]
+    public void MapsStatusCodes(int code, string expected) =>
+        Assert.Equal(expected, SearchBox.Api.Monitoring.UptimeInfo.Parse(
+            $$"""{"stat":"ok","monitors":[{"status":{{code}},"custom_uptime_ratio":"98.5-99.1"}]}""", Now)!.Status);
+
+    [Fact]
+    public void ErrorAnswerGivesNull() =>
+        Assert.Null(SearchBox.Api.Monitoring.UptimeInfo.Parse(
+            """{"stat":"fail","error":{"type":"invalid_parameter","message":"api_key not found."}}""", Now));
+
+    [Fact]
+    public void NoMonitorsGivesNull() =>
+        Assert.Null(SearchBox.Api.Monitoring.UptimeInfo.Parse("""{"stat":"ok","monitors":[]}""", Now));
+
+    [Fact]
+    public void JunkRatiosBecomeNull()
+    {
+        var u = SearchBox.Api.Monitoring.UptimeInfo.Parse(
+            """{"stat":"ok","monitors":[{"status":2,"custom_uptime_ratio":"abc-250"}]}""", Now)!;
+        Assert.Null(u.Ratio7d);
+        Assert.Null(u.Ratio30d);
+    }
+}

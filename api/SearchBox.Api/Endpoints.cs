@@ -3,6 +3,7 @@ using SearchBox.Api.Caching;
 using SearchBox.Api.Data;
 using SearchBox.Api.Embedding;
 using SearchBox.Api.Limits;
+using SearchBox.Api.Monitoring;
 using SearchBox.Api.Redis;
 using SearchBox.Api.Summary;
 
@@ -156,7 +157,7 @@ public static class Endpoints
     // GET /api/v1/stats  (index size and last crawl, shown in the UI)
     private static async Task<IResult> StatsAsync(
         HttpContext ctx, LeakyBucket buckets, IndexInfo index, SummaryService summaries,
-        Embedder embedder, SearchBoxOptions options, CancellationToken ct)
+        Embedder embedder, SearchBoxOptions options, UptimeInfo uptime, CancellationToken ct)
     {
         if (await LimitAsync(buckets, ApiPolicy, ctx) is { } limited) return limited;
         if (index.Current is null) await index.RefreshAsync(ct);
@@ -172,6 +173,9 @@ public static class Endpoints
             summary_enabled = summaries.Enabled,
             summary_models = summaries.ModelNames,
             dashboard_url = string.IsNullOrWhiteSpace(options.DashboardUrl) ? null : options.DashboardUrl,
+            uptime = uptime.Current is { } u
+                ? new { status = u.Status, ratio_7d = u.Ratio7d, ratio_30d = u.Ratio30d, checked_at = u.CheckedAt }
+                : null,
         });
     }
 

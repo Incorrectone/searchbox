@@ -16,6 +16,7 @@ using SearchBox.Api.Caching;
 using SearchBox.Api.Data;
 using SearchBox.Api.Embedding;
 using SearchBox.Api.Limits;
+using SearchBox.Api.Monitoring;
 using SearchBox.Api.Redis;
 using SearchBox.Api.Summary;
 
@@ -50,6 +51,9 @@ builder.Services.AddSingleton<DailyQuota>();
 builder.Services.AddSingleton<IndexInfo>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<IndexInfo>()); // start its refresh loop
 builder.Services.AddHttpClient<SummaryService>(c => c.Timeout = TimeSpan.FromSeconds(25));
+builder.Services.AddHttpClient(UptimeInfo.HttpClientName, c => c.Timeout = TimeSpan.FromSeconds(15));
+builder.Services.AddSingleton<UptimeInfo>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<UptimeInfo>()); // polls UptimeRobot every 5 min
 
 // JSON: snake_case field names (took_ms, page_size, ...) like the plan's API spec.
 builder.Services.ConfigureHttpJsonOptions(o =>
@@ -103,7 +107,13 @@ app.Use(async (ctx, next) =>
 });
 
 app.UseDefaultFiles(); // "/" -> wwwroot/index.html
-app.UseStaticFiles();  // serves wwwroot/ (the retro UI)
+app.UseStaticFiles(new StaticFileOptions // serves wwwroot/ (the retro UI)
+{
+    // "no-cache" = browsers and Cloudflare may keep a copy but must check it is
+    // still current first (a cheap 304 via ETag). Without this, Cloudflare's
+    // default 4-hour browser TTL kept serving the old app.js after each deploy.
+    OnPrepareResponse = ctx => ctx.Context.Response.Headers.CacheControl = "no-cache",
+});
 
 app.MapOpenApi();
 app.MapSearchBoxApi();
