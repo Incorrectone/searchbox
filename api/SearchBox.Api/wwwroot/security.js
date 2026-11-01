@@ -3,7 +3,7 @@
 "use strict";
 
 // Only a Looker Studio *embed* URL may be framed; anything else is ignored.
-const EMBED = /^https:\/\/lookerstudio\.google\.com\/embed\/reporting\/[A-Za-z0-9_-]+(\/page\/[A-Za-z0-9_-]+)?$/;
+const EMBED = /^https:\/\/(?:lookerstudio|datastudio)\.google\.com\/embed\/reporting\/[A-Za-z0-9_-]+(\/page\/[A-Za-z0-9_-]+)?$/;
 
 async function init() {
   const note = document.getElementById("dash-missing");

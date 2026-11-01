@@ -96,7 +96,7 @@ app.Use(async (ctx, next) =>
     // which blocks injected <script> even if some text slipped through unescaped.
     ctx.Response.Headers.ContentSecurityPolicy =
         "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; " +
-        "connect-src 'self'; frame-src https://lookerstudio.google.com; base-uri 'none'; " +
+        "connect-src 'self'; frame-src https://lookerstudio.google.com https://datastudio.google.com; base-uri 'none'; " +
         "form-action 'self'; frame-ancestors 'none'";
     ctx.Response.Headers.XContentTypeOptions = "nosniff";
     await next();
